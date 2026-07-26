@@ -1,5 +1,8 @@
 import { Schema, model } from "mongoose";
 import bcrypt from "bcrypt";
+import jwt from "jsonwebtoken";
+import crypto from "crypto";
+
 
 const userSchema = new Schema({
     avatar: {
@@ -58,7 +61,7 @@ const userSchema = new Schema({
 //prehook for hash password before save
 
 userSchema.pre('save', async function (next){
-    if(this.isModified('password')) return next();
+    if(!this.isModified('password')) return next();
     try{
         const salt = await bcrypt.genSalt(10);
         this.password = await bcrypt.hash(this.password, salt);
@@ -72,6 +75,45 @@ userSchema.pre('save', async function (next){
 
 userSchema.methods.isPasswordCorrect = async function (password){
     return await bcrypt.compare(password, this.password);
+}
+
+//generateRefresh Token 
+userSchema.methods.generateRefreshToken = function (){
+    return jwt.sign(
+        {
+            _id: this._id
+        },
+        process.env.REFRESH_TOKEN_SECRET,
+        {
+            expiresIn: process.env.REFRESH_TOKEN_EXPIRY
+        }
+    )
+}
+
+//ACCESS TOKEN GENERATION
+userSchema.methods.generateAccessToken = function (){
+    return jwt.sign(
+        {
+            _id: this._id,
+            email: this.email
+        },
+        process.env.ACCESS_TOKEN_SECRET,
+        {
+            expiresIn: process.env.ACCESS_TOKEN_EXPIRY
+        }
+    )
+}
+
+
+//temporary token generation token
+userSchema.methods.tempTokenGeneration = function (){
+    const unHashedToken = crypto.randomBytes(25).toString('hex');
+
+    const hashedToken = crypto.createHash('sha256').update(unHashedToken).digest('hex');
+
+    const tokenExpiry = Date.now() + (15*60*1000);
+
+    return { unHashedToken, hashedToken, tokenExpiry }
 }
 
 export const User = model('User', userSchema);
